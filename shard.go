@@ -7,52 +7,57 @@ import (
 
 // ExpiredCallback Callback the function when the key-value pair expires
 // Note that it is executed after expiration
-type ExpiredCallback func(k string, v interface{}) error
+type ExpiredCallback[K comparable, V any] func(k K, v V) error
 
-type memCacheShard struct {
-	hashmap         map[string]Item
+type memCacheShard[K comparable, V any] struct {
+	hashmap         map[K]Item[V]
 	lock            sync.RWMutex
-	expiredCallback ExpiredCallback
+	expiredCallback ExpiredCallback[K, V]
 }
 
-func newMemCacheShard(conf *Config) *memCacheShard {
-	return &memCacheShard{expiredCallback: conf.expiredCallback, hashmap: map[string]Item{}}
+func newMemCacheShard[K comparable, V any](conf *Config[K, V]) *memCacheShard[K, V] {
+	return &memCacheShard[K, V]{expiredCallback: conf.expiredCallback, hashmap: map[K]Item[V]{}}
 }
 
-func (c *memCacheShard) set(k string, item *Item) {
+func (c *memCacheShard[K, V]) set(k K, item *Item[V]) {
 	c.lock.Lock()
 	c.hashmap[k] = *item
 	c.lock.Unlock()
 	return
 }
 
-func (c *memCacheShard) get(k string) (interface{}, bool) {
+func getZero[T any]() T {
+	var result T
+	return result
+}
+
+func (c *memCacheShard[K, V]) get(k K) (V, bool) {
 	c.lock.RLock()
 	item, exist := c.hashmap[k]
 	c.lock.RUnlock()
 	if !exist {
-		return nil, false
+		return getZero[V](), false
 	}
 	if !item.Expired() {
 		return item.v, true
 	}
 	if c.delExpired(k) {
-		return nil, false
+		return getZero[V](), false
 	}
 	return c.get(k)
 }
 
-func (c *memCacheShard) getSet(k string, item *Item) (interface{}, bool) {
-	defer c.set(k, item)
-	return c.get(k)
-}
+// func (c *memCacheShard[K, V]) getSet(k K, item *Item[V]) (V, bool) {
+// 	defer c.set(k, item)
+// 	return c.get(k)
+// }
 
-func (c *memCacheShard) getDel(k string) (interface{}, bool) {
-	defer c.del(k)
-	return c.get(k)
-}
+// func (c *memCacheShard[K, V]) getDel(k K) (V, bool) {
+// 	defer c.del(k)
+// 	return c.get(k)
+// }
 
-func (c *memCacheShard) del(k string) int {
+func (c *memCacheShard[K, V]) del(k K) int {
 	var count int
 	c.lock.Lock()
 	v, found := c.hashmap[k]
@@ -66,8 +71,8 @@ func (c *memCacheShard) del(k string) int {
 	return count
 }
 
-//delExpired Only delete when key expires
-func (c *memCacheShard) delExpired(k string) bool {
+// delExpired Only delete when key expires
+func (c *memCacheShard[K, V]) delExpired(k K) bool {
 	c.lock.Lock()
 	item, found := c.hashmap[k]
 	if !found || !item.Expired() {
@@ -82,18 +87,18 @@ func (c *memCacheShard) delExpired(k string) bool {
 	return true
 }
 
-func (c *memCacheShard) ttl(k string) (time.Duration, bool) {
+func (c *memCacheShard[K, V]) ttl(k K) (time.Duration, bool) {
 	c.lock.RLock()
 	v, found := c.hashmap[k]
 	c.lock.RUnlock()
 	if !found || !v.CanExpire() || v.Expired() {
 		return 0, false
 	}
-	return v.expire.Sub(time.Now()), true
+	return time.Until(v.expire), true
 }
 
-func (c *memCacheShard) checkExpire() {
-	var expiredKeys []string
+func (c *memCacheShard[K, V]) checkExpire() {
+	var expiredKeys []K
 	c.lock.RLock()
 	for k, item := range c.hashmap {
 		if item.Expired() {
@@ -106,7 +111,7 @@ func (c *memCacheShard) checkExpire() {
 	}
 }
 
-func (c *memCacheShard) saveToMap(target map[string]interface{}) {
+func (c *memCacheShard[K, V]) saveToMap(target map[K]V) {
 	c.lock.RLock()
 	for k, item := range c.hashmap {
 		if item.Expired() {

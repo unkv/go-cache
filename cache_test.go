@@ -12,7 +12,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func mockCache(ops ...ICacheOption) ICache {
+func mockCache(ops ...ICacheOption[string, interface{}]) ICache[string, interface{}] {
 	c := NewMemCache(ops...)
 	c.Set("int", 1)
 	c.Set("int32", int32(1))
@@ -20,7 +20,7 @@ func mockCache(ops ...ICacheOption) ICache {
 	c.Set("string", "a")
 	c.Set("float64", 1.1)
 	c.Set("float32", float32(1.1))
-	c.Set("ex", 1, WithEx(1*time.Second))
+	c.Set("ex", 1, WithEx[string, interface{}](1*time.Second))
 	return c
 }
 
@@ -40,7 +40,7 @@ func TestItem_Expired(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			i := &Item{
+			i := &Item[interface{}]{
 				v:      tt.fields.v,
 				expire: tt.fields.expire,
 			}
@@ -209,7 +209,7 @@ func TestMemCache_GetSet(t *testing.T) {
 	type args struct {
 		k    string
 		v    interface{}
-		opts []SetIOption
+		opts []SetIOption[string, interface{}]
 	}
 	tests := []struct {
 		name  string
@@ -291,7 +291,7 @@ func TestMemCache_Set(t *testing.T) {
 	type args struct {
 		k    string
 		v    interface{}
-		opts []SetIOption
+		opts []SetIOption[string, interface{}]
 	}
 	tests := []struct {
 		name string
@@ -302,7 +302,7 @@ func TestMemCache_Set(t *testing.T) {
 		{name: "int32", args: args{k: "int32", v: int32(2)}, want: true},
 		{name: "int64", args: args{k: "int64", v: int64(3)}, want: true},
 	}
-	c := NewMemCache()
+	c := NewMemCache[string, interface{}]()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := c.Set(tt.args.k, tt.args.v, tt.args.opts...); got != tt.want {
@@ -355,7 +355,7 @@ func TestMemCache_DelExpired(t *testing.T) {
 		{name: "ex1", args: args{k: "ex", sleep: 1000 * time.Millisecond}, want: true},
 		{name: "null", args: args{k: "null"}, want: false},
 	}
-	c := mockCache(WithClearInterval(1 * time.Minute))
+	c := mockCache(WithClearInterval[string, interface{}](1 * time.Minute))
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			time.Sleep(tt.args.sleep)
@@ -410,10 +410,10 @@ func TestMemCache_Finalize(t *testing.T) {
 	}{
 		{name: "1"},
 	}
-	mc := NewMemCache()
+	mc := NewMemCache[string, interface{}]()
 	mc.Set("a", 1)
-	mc.Set("b", 1, WithEx(1*time.Nanosecond))
-	closed := mc.(*MemCache).closed
+	mc.Set("b", 1, WithEx[string, interface{}](1*time.Nanosecond))
+	closed := mc.(*MemCache[string, interface{}]).closed
 	mc = nil
 	runtime.GC()
 	for _, tt := range tests {

@@ -1,16 +1,18 @@
 package cache
 
+import "fmt"
+
 // IHash is responsible for generating unsigned, 64-bit hash of provided string. IHash should minimize collisions
 // (generating same hash for different strings) and while performance is also important fast functions are preferable (i.e.
 // you can use FarmHash family).
-type IHash interface {
-	Sum64(string) uint64
+type IHash[K comparable] interface {
+	Sum64(K) uint64
 }
 
-// newDefaultHash returns a new 64-bit FNV-1a IHash which makes no memory allocations.
+// DefaultStringHash returns a new 64-bit FNV-1a IHash which makes no memory allocations.
 // Its Sum64 method will lay the value out in big-endian byte order.
 // See https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
-func newDefaultHash() IHash {
+func DefaultStringHash() IHash[string] {
 	return fnv64a{}
 }
 
@@ -32,4 +34,16 @@ func (f fnv64a) Sum64(key string) uint64 {
 	}
 
 	return hash
+}
+
+// toString is a IHash that converts the key to a string and then hashes it
+type toString[K comparable] struct{}
+
+func (toString[K]) Sum64(k K) uint64 {
+	return DefaultStringHash().Sum64(fmt.Sprintf("%v", k))
+}
+
+// NewDefaultHash returns a new IHash that converts the key to a string and then hashes it
+func NewDefaultHash[K comparable]() IHash[K] {
+	return toString[K]{}
 }

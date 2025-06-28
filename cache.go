@@ -5,55 +5,55 @@ import (
 	"time"
 )
 
-type ICache interface {
+type ICache[K comparable, V any] interface {
 	//Set key to hold the string value. If key already holds a value, it is overwritten, regardless of its type.
 	//Any previous time to live associated with the key is discarded on successful SET operation.
 	//Example:
 	//c.Set("demo", 1)
 	//c.Set("demo", 1, WithEx(10*time.Second))
 	//c.Set("demo", 1, WithEx(10*time.Second), WithNx())
-	Set(k string, v interface{}, opts ...SetIOption) bool
+	Set(k K, v V, opts ...SetIOption[K, V]) bool
 	//Get the value of key.
 	//If the key does not exist the special value nil,false is returned.
 	//Example:
 	//c.Get("demo") //nil, false
 	//c.Set("demo", "value")
 	//c.Get("demo") //"value", true
-	Get(k string) (interface{}, bool)
+	Get(k K) (V, bool)
 	//GetSet Atomically sets key to value and returns the old value stored at key.
 	//Returns nil,false when key not exists.
 	//Example:
 	//c.GetSet("demo", 1) //nil,false
 	//c.GetSet("demo", 2) //1,true
-	GetSet(k string, v interface{}, opts ...SetIOption) (interface{}, bool)
+	GetSet(k K, v V, opts ...SetIOption[K, V]) (V, bool)
 	//GetDel Get the value of key and delete the key.
 	//This command is similar to GET, except for the fact that it also deletes the key on success.
 	//Example:
 	//c.Set("demo", "value")
 	//c.GetDel("demo") //"value", true
 	//c.GetDel("demo") //nil, false
-	GetDel(k string) (interface{}, bool)
+	GetDel(k K) (V, bool)
 	//Del Removes the specified keys. A key is ignored if it does not exist.
 	//Return the number of keys that were removed.
 	//Example:
 	//c.Set("demo1", "1")
 	//c.Set("demo2", "1")
 	//c.Del("demo1", "demo2", "demo3") //2
-	Del(keys ...string) int
+	Del(keys ...K) int
 	//DelExpired Only delete when key expires
 	//Example:
 	//c.Set("demo1", "1")
 	//c.Set("demo2", "1", WithEx(1*time.Second))
 	//time.Sleep(1*time.Second)
 	//c.DelExpired("demo1", "demo2") //true
-	DelExpired(k string) bool
+	DelExpired(k K) bool
 	//Exists Returns if key exists.
 	//Return the number of exists keys.
 	//Example:
 	//c.Set("demo1", "1")
 	//c.Set("demo2", "1")
 	//c.Exists("demo1", "demo2", "demo3") //2
-	Exists(keys ...string) bool
+	Exists(keys ...K) bool
 	//Expire Set a timeout on key.
 	//After the timeout has expired, the key will automatically be deleted.
 	//Return false if the key not exist.
@@ -61,7 +61,7 @@ type ICache interface {
 	//c.Expire("demo", 1*time.Second) // false
 	//c.Set("demo", "1")
 	//c.Expire("demo", 1*time.Second) // true
-	Expire(k string, d time.Duration) bool
+	Expire(k K, d time.Duration) bool
 	//ExpireAt has the same effect and semantic as Expire, but instead of specifying the number of seconds representing the TTL (time to live),
 	//it takes an absolute Unix Time (seconds since January 1, 1970). A Time in the past will delete the key immediately.
 	//Return false if the key not exist.
@@ -69,14 +69,14 @@ type ICache interface {
 	//c.ExpireAt("demo", time.Now().Add(10*time.Second)) // false
 	//c.Set("demo", "1")
 	//c.ExpireAt("demo", time.Now().Add(10*time.Second)) // true
-	ExpireAt(k string, t time.Time) bool
+	ExpireAt(k K, t time.Time) bool
 	//Persist Remove the existing timeout on key.
 	//Return false if the key not exist.
 	//Example:
 	//c.Persist("demo") // false
 	//c.Set("demo", "1")
 	//c.Persist("demo") // true
-	Persist(k string) bool
+	Persist(k K) bool
 	//Ttl Returns the remaining time to live of a key that has a timeout.
 	//Returns 0,false if the key does not exist or if the key exist but has no associated expire.
 	//Example:
@@ -84,7 +84,7 @@ type ICache interface {
 	//c.Ttl("demo") // 0,false
 	//c.Set("demo", "1", WithEx(10*time.Second))
 	//c.Ttl("demo") // 10*time.Second,true
-	Ttl(k string) (time.Duration, bool)
+	Ttl(k K) (time.Duration, bool)
 	// ToMap converts the current cache into a map with string keys and interface{} values.
 	// Where the keys are the field names (as strings) and the values are the corresponding data.
 	// Returns:
@@ -96,17 +96,17 @@ type ICache interface {
 	// c.Expire("a", 1*time.Second)
 	// when sleep(1*time.Second)
 	// c.ToMap() return {"b":"uu"}
-	ToMap() map[string]interface{}
+	ToMap() map[K]V
 }
 
-func NewMemCache(opts ...ICacheOption) ICache {
-	conf := NewConfig()
+func NewMemCache[K comparable, V any](opts ...ICacheOption[K, V]) ICache[K, V] {
+	conf := NewConfig[K, V]()
 	for _, opt := range opts {
 		opt(conf)
 	}
 
-	c := &memCache{
-		shards:    make([]*memCacheShard, conf.shards),
+	c := &memCache[K, V]{
+		shards:    make([]*memCacheShard[K, V], conf.shards),
 		closed:    make(chan struct{}),
 		shardMask: uint64(conf.shards - 1),
 		config:    conf,
@@ -131,27 +131,34 @@ func NewMemCache(opts ...ICacheOption) ICache {
 			}
 		}()
 	}
-	cache := &MemCache{c}
+	cache := &MemCache[K, V]{c}
 	// Associated finalizer function with obj.
 	// When the obj is unreachable, close the obj.
-	runtime.SetFinalizer(cache, func(cache *MemCache) { close(cache.closed) })
+	runtime.SetFinalizer(cache, func(cache *MemCache[K, V]) { close(cache.closed) })
 	return cache
 }
 
-type MemCache struct {
-	*memCache
+func NewWithStrKey[V any](opts ...ICacheOption[string, V]) ICache[string, V] {
+	allOpts := make([]ICacheOption[string, V], 0, len(opts)+1)
+	allOpts = append(allOpts, WithHash[string, V](DefaultStringHash()))
+	allOpts = append(allOpts, opts...)
+	return NewMemCache(allOpts...)
 }
 
-type memCache struct {
-	shards    []*memCacheShard
-	hash      IHash
+type MemCache[K comparable, V any] struct {
+	*memCache[K, V]
+}
+
+type memCache[K comparable, V any] struct {
+	shards    []*memCacheShard[K, V]
+	hash      IHash[K]
 	shardMask uint64
-	config    *Config
+	config    *Config[K, V]
 	closed    chan struct{}
 }
 
-func (c *memCache) Set(k string, v interface{}, opts ...SetIOption) bool {
-	item := Item{v: v}
+func (c *memCache[K, V]) Set(k K, v V, opts ...SetIOption[K, V]) bool {
+	item := Item[V]{v: v}
 	for _, opt := range opts {
 		if pass := opt(c, k, &item); !pass {
 			return false
@@ -163,23 +170,23 @@ func (c *memCache) Set(k string, v interface{}, opts ...SetIOption) bool {
 	return true
 }
 
-func (c *memCache) Get(k string) (interface{}, bool) {
+func (c *memCache[K, V]) Get(k K) (V, bool) {
 	hashedKey := c.hash.Sum64(k)
 	shard := c.getShard(hashedKey)
 	return shard.get(k)
 }
 
-func (c *memCache) GetSet(k string, v interface{}, opts ...SetIOption) (interface{}, bool) {
+func (c *memCache[K, V]) GetSet(k K, v V, opts ...SetIOption[K, V]) (V, bool) {
 	defer c.Set(k, v, opts...)
 	return c.Get(k)
 }
 
-func (c *memCache) GetDel(k string) (interface{}, bool) {
+func (c *memCache[K, V]) GetDel(k K) (V, bool) {
 	defer c.Del(k)
 	return c.Get(k)
 }
 
-func (c *memCache) Del(ks ...string) int {
+func (c *memCache[K, V]) Del(ks ...K) int {
 	var count int
 	for _, k := range ks {
 		hashedKey := c.hash.Sum64(k)
@@ -189,14 +196,14 @@ func (c *memCache) Del(ks ...string) int {
 	return count
 }
 
-//DelExpired Only delete when key expires
-func (c *memCache) DelExpired(k string) bool {
+// DelExpired Only delete when key expires
+func (c *memCache[K, V]) DelExpired(k K) bool {
 	hashedKey := c.hash.Sum64(k)
 	shard := c.getShard(hashedKey)
 	return shard.delExpired(k)
 }
 
-func (c *memCache) Exists(ks ...string) bool {
+func (c *memCache[K, V]) Exists(ks ...K) bool {
 	for _, k := range ks {
 		if _, found := c.Get(k); !found {
 			return false
@@ -205,23 +212,23 @@ func (c *memCache) Exists(ks ...string) bool {
 	return true
 }
 
-func (c *memCache) Expire(k string, d time.Duration) bool {
+func (c *memCache[K, V]) Expire(k K, d time.Duration) bool {
 	v, found := c.Get(k)
 	if !found {
 		return false
 	}
-	return c.Set(k, v, WithEx(d))
+	return c.Set(k, v, WithEx[K, V](d))
 }
 
-func (c *memCache) ExpireAt(k string, t time.Time) bool {
+func (c *memCache[K, V]) ExpireAt(k K, t time.Time) bool {
 	v, found := c.Get(k)
 	if !found {
 		return false
 	}
-	return c.Set(k, v, WithExAt(t))
+	return c.Set(k, v, WithExAt[K, V](t))
 }
 
-func (c *memCache) Persist(k string) bool {
+func (c *memCache[K, V]) Persist(k K) bool {
 	v, found := c.Get(k)
 	if !found {
 		return false
@@ -229,20 +236,20 @@ func (c *memCache) Persist(k string) bool {
 	return c.Set(k, v)
 }
 
-func (c *memCache) Ttl(k string) (time.Duration, bool) {
+func (c *memCache[K, V]) Ttl(k K) (time.Duration, bool) {
 	hashedKey := c.hash.Sum64(k)
 	shard := c.getShard(hashedKey)
 	return shard.ttl(k)
 }
 
-func (c *memCache) ToMap() map[string]interface{} {
-	result := make(map[string]interface{})
+func (c *memCache[K, V]) ToMap() map[K]V {
+	result := make(map[K]V)
 	for _, shard := range c.shards {
 		shard.saveToMap(result)
 	}
 	return result
 }
 
-func (c *memCache) getShard(hashedKey uint64) (shard *memCacheShard) {
+func (c *memCache[K, V]) getShard(hashedKey uint64) (shard *memCacheShard[K, V]) {
 	return c.shards[hashedKey&c.shardMask]
 }

@@ -8,22 +8,22 @@ type IItem interface {
 	SetExpireAt(t time.Time)
 }
 
-type Item struct {
-	v      interface{}
+type Item[V any] struct {
+	v      V
 	expire time.Time
 }
 
-func (i *Item) Expired() bool {
+func (i *Item[V]) Expired() bool {
 	if !i.CanExpire() {
 		return false
 	}
 	return time.Now().After(i.expire)
 }
 
-func (i *Item) CanExpire() bool {
+func (i *Item[V]) CanExpire() bool {
 	return !i.expire.IsZero()
 }
 
-func (i *Item) SetExpireAt(t time.Time) {
+func (i *Item[V]) SetExpireAt(t time.Time) {
 	i.expire = t
 }

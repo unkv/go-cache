@@ -10,7 +10,7 @@ func TestWithEx(t *testing.T) {
 	type args struct {
 		key string
 		v   interface{}
-		opt SetIOption
+		opt SetIOption[string, interface{}]
 	}
 	tests := []struct {
 		name  string
@@ -18,9 +18,9 @@ func TestWithEx(t *testing.T) {
 		sleep time.Duration
 		want  bool
 	}{
-		{name: "int", args: args{key: "intWithEx", v: 1, opt: WithEx(10 * time.Millisecond)}, sleep: 0, want: true},
-		{name: "int", args: args{key: "intWithEx", v: 1, opt: WithEx(10 * time.Millisecond)}, sleep: 10 * time.Millisecond, want: false},
-		{name: "int", args: args{key: "intWithEx", v: 1, opt: WithEx(100 * time.Millisecond)}, sleep: 50 * time.Millisecond, want: true},
+		{name: "int", args: args{key: "intWithEx", v: 1, opt: WithEx[string, interface{}](10 * time.Millisecond)}, sleep: 0, want: true},
+		{name: "int", args: args{key: "intWithEx", v: 1, opt: WithEx[string, interface{}](10 * time.Millisecond)}, sleep: 10 * time.Millisecond, want: false},
+		{name: "int", args: args{key: "intWithEx", v: 1, opt: WithEx[string, interface{}](100 * time.Millisecond)}, sleep: 50 * time.Millisecond, want: true},
 	}
 	c := mockCache()
 	for _, tt := range tests {
@@ -39,7 +39,7 @@ func TestWithExAt(t *testing.T) {
 	type args struct {
 		key string
 		v   interface{}
-		opt SetIOption
+		opt SetIOption[string, interface{}]
 	}
 	tests := []struct {
 		name  string
@@ -47,9 +47,9 @@ func TestWithExAt(t *testing.T) {
 		sleep time.Duration
 		want  bool
 	}{
-		{name: "int", args: args{key: "int", v: 1, opt: WithExAt(time.Now().Add(10 * time.Millisecond))}, sleep: 0, want: true},
-		{name: "int", args: args{key: "int", v: 1, opt: WithExAt(time.Now().Add(10 * time.Millisecond))}, sleep: 10 * time.Millisecond, want: false},
-		{name: "int", args: args{key: "int", v: 1, opt: WithExAt(time.Now().Add(100 * time.Millisecond))}, sleep: 50 * time.Millisecond, want: true},
+		{name: "int", args: args{key: "int", v: 1, opt: WithExAt[string, interface{}](time.Now().Add(10 * time.Millisecond))}, sleep: 0, want: true},
+		{name: "int", args: args{key: "int", v: 1, opt: WithExAt[string, interface{}](time.Now().Add(10 * time.Millisecond))}, sleep: 10 * time.Millisecond, want: false},
+		{name: "int", args: args{key: "int", v: 1, opt: WithExAt[string, interface{}](time.Now().Add(100 * time.Millisecond))}, sleep: 50 * time.Millisecond, want: true},
 	}
 	c := mockCache()
 	for _, tt := range tests {
@@ -76,19 +76,19 @@ func TestWithShards(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := NewMemCache(WithShards(tt.args.shards))
-			if len(c.(*MemCache).shards) != tt.args.shards {
-				t.Errorf("WithShards() = %v, want %v", len(c.(*MemCache).shards), tt.args.shards)
+			c := NewMemCache[string, interface{}](WithShards[string, interface{}](tt.args.shards))
+			if len(c.(*MemCache[string, interface{}]).shards) != tt.args.shards {
+				t.Errorf("WithShards() = %v, want %v", len(c.(*MemCache[string, interface{}]).shards), tt.args.shards)
 			}
 		})
 	}
 }
 
 func TestWithExpiredCallback(t *testing.T) {
-	var c ICache
+	var c ICache[string, interface{}]
 	type args struct {
 		do func()
-		ec ExpiredCallback
+		ec ExpiredCallback[string, interface{}]
 	}
 	tests := []struct {
 		name string
@@ -98,7 +98,7 @@ func TestWithExpiredCallback(t *testing.T) {
 		{name: "1",
 			args: args{
 				do: func() {
-					c.Set("1", 1, WithEx(100*time.Millisecond))
+					c.Set("1", 1, WithEx[string, interface{}](100*time.Millisecond))
 					time.Sleep(1100 * time.Millisecond)
 				},
 				ec: func(k string, v interface{}) error {
@@ -115,7 +115,7 @@ func TestWithExpiredCallback(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c = NewMemCache(WithExpiredCallback(tt.args.ec))
+			c = NewMemCache[string, interface{}](WithExpiredCallback[string, interface{}](tt.args.ec))
 			tt.args.do()
 			if !tt.want() {
 				t.Errorf("WithExpiredCallback() = %v, want %v", tt.want(), true)
@@ -132,9 +132,9 @@ func (h hash1) Sum64(s string) uint64 {
 }
 
 func TestWithHash(t *testing.T) {
-	var c ICache
+	var c ICache[string, interface{}]
 	type args struct {
-		hash IHash
+		hash IHash[string]
 	}
 	tests := []struct {
 		name string
@@ -151,13 +151,13 @@ func TestWithHash(t *testing.T) {
 				c.Set("d", 1)
 			},
 			got: func() int {
-				return len(c.(*MemCache).shards[0].hashmap)
+				return len(c.(*MemCache[string, interface{}]).shards[0].hashmap)
 			},
 			want: 4},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c = NewMemCache(WithHash(tt.args.hash))
+			c = NewMemCache[string, interface{}](WithHash[string, interface{}](tt.args.hash))
 			tt.do()
 			if got := tt.got(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("WithHash() = %v, want %v", got, tt.want)
@@ -167,7 +167,7 @@ func TestWithHash(t *testing.T) {
 }
 
 func TestWithClearInterval(t *testing.T) {
-	var c ICache
+	var c ICache[string, interface{}]
 	type args struct {
 		d time.Duration
 	}
@@ -179,26 +179,26 @@ func TestWithClearInterval(t *testing.T) {
 	}{
 		{name: "1", args: args{d: 100 * time.Millisecond},
 			got: func() interface{} {
-				c.Set("ex", 1, WithEx(10*time.Millisecond))
+				c.Set("ex", 1, WithEx[string, interface{}](10*time.Millisecond))
 				time.Sleep(50 * time.Millisecond)
-				return c.(*MemCache).shards[0].hashmap["ex"].v
+				return c.(*MemCache[string, interface{}]).shards[0].hashmap["ex"].v
 			}, want: 1},
 		{name: "nil", args: args{d: 100 * time.Millisecond},
 			got: func() interface{} {
-				c.Set("ex", 1, WithEx(10*time.Millisecond))
+				c.Set("ex", 1, WithEx[string, interface{}](10*time.Millisecond))
 				time.Sleep(110 * time.Millisecond)
-				return c.(*MemCache).shards[0].hashmap["ex"].v
+				return c.(*MemCache[string, interface{}]).shards[0].hashmap["ex"].v
 			}, want: nil},
 		{name: "no expire", args: args{d: 0},
 			got: func() interface{} {
-				c.Set("ex", 1, WithEx(10*time.Millisecond))
+				c.Set("ex", 1, WithEx[string, interface{}](10*time.Millisecond))
 				time.Sleep(110 * time.Millisecond)
-				return c.(*MemCache).shards[0].hashmap["ex"].v
+				return c.(*MemCache[string, interface{}]).shards[0].hashmap["ex"].v
 			}, want: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c = mockCache(WithHash(hash1{}), WithClearInterval(tt.args.d))
+			c = mockCache(WithHash[string, interface{}](hash1{}), WithClearInterval[string, interface{}](tt.args.d))
 			if got := tt.got(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("WithClearInterval() = %v, want %v", got, tt.want)
 			}
